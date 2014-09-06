@@ -19,46 +19,54 @@
 
 #include "Core.h"
 
-void Message::addPositions(const std::map<int, NodeState>& update)
+void Message::addPositions(const std::map<int, NodeState>& updates)
 {
     // add this information to our message
-    for (std::map<int, NodeState>::const_iterator update_iterator = update.begin();
-        update_iterator != update.end(); ++update_iterator)
+    for (auto const& update : updates)
     {
-        if (update_iterator->first != to_node)
-        {
-            // don't tell a node about itself
-            std::map<int, NodeState>::iterator message_iterator=data.find(update_iterator->first);
+        int node_id = update.first;
 
-            if(message_iterator != data.end() && message_iterator->first)
+        if (node_id != to_node)
+        {
+            std::map<int, NodeState>::iterator search = data.find(node_id);
+            // We didn't know about this node, or the node has a 0 id so store
+            // the state in the message. What's the significance of a 0 id???
+            if (search == data.end() || node_id == 0)
             {
-                // we already had data about this node going in this message
-                if (update_iterator->second.ts > message_iterator->second.ts)
-                {
-                    message_iterator->second.ts = update_iterator->second.ts;
-                    message_iterator->second.state = update_iterator->second.state;
-                }
+                data.insert(update);
             }
             else
-                data.insert(std::make_pair(update_iterator->first, update_iterator->second));
+            {
+                // We already had data about this node going in this message
+                auto& possibly_updated = update.second;
+                auto& stored = search->second;
+
+                if (possibly_updated.ts > stored.ts) // `ts` => timestamp
+                {
+                    stored.ts = possibly_updated.ts;
+                    stored.state = possibly_updated.state;
+                }
+            }
         }
     }
 }
 
 void Message::subPositions(const std::map<int, NodeState>& received)
 {
-    // we received this information from this node, so no need to send it
-    for (std::map<int, NodeState>::const_iterator received_iterator = received.begin();
-        received_iterator != received.end(); ++received_iterator)
+    // We received this information from this node, so no need to send it
+    for (auto const& state : received)
     {
-        if (received_iterator->first != to_node)
+        int node_id = state.first;
+
+        if (node_id != to_node)
         {
-            std::map<int, NodeState>::iterator message_iterator=data.find(received_iterator->first);
-            if( (message_iterator != data.end()) &&
-                (received_iterator->second.ts >= message_iterator->second.ts) )
-	    {
-                data.erase(message_iterator); // The node doesn't need the data
-	    }
+            std::map<int, NodeState>::iterator search = data.find(node_id);
+            bool found = search != data.end();
+
+            if (found && state.second.ts >= search->second.ts)
+            {
+                data.erase(search); // The node doesn't need the data
+            }
         }
     }
 }
